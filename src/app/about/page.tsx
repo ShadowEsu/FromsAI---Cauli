@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 
 export default function AboutPage() {
@@ -16,13 +15,6 @@ export default function AboutPage() {
           Google AI &ndash; Gemini Live Agent Challenge
         </p>
         <div className="flex flex-col items-center mb-10">
-          <Image
-            src="/logo-clean.png"
-            alt="Cauliform AI"
-            width={100}
-            height={100}
-            className="mb-2"
-          />
           <h1 className="text-3xl font-bold text-stone-800 tracking-tight">
             Cauliform AI
           </h1>

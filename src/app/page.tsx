@@ -1,19 +1,18 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import Image from "next/image";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
 import { createFormAgentPrompt, getFormTools } from "@/lib/prompts";
 import type { FormData } from "@/lib/types";
 
-interface TranscriptEntry {
+type AppState = "input" | "connecting" | "conversation" | "ended";
+
+type TranscriptEntry = {
   role: "user" | "agent";
   text: string;
   timestamp: Date;
-}
-
-type AppState = "input" | "connecting" | "conversation" | "ended";
+};
 
 export default function HomePage() {
   const [formUrl, setFormUrl] = useState("");
@@ -21,126 +20,108 @@ export default function HomePage() {
   const [formData, setFormData] = useState<FormData | null>(null);
   const [appState, setAppState] = useState<AppState>("input");
   const [error, setError] = useState("");
-  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [submissionStatus, setSubmissionStatus] = useState<"idle" | "submitting" | "success" | "failed">("idle");
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [apiKey, setApiKey] = useState("");
 
-  const transcriptRef = useRef<HTMLDivElement>(null);
-  const formUrlRef = useRef(formUrl);
-  formUrlRef.current = formUrl;
-  const phoneRef = useRef(phoneNumber);
-  phoneRef.current = phoneNumber;
-  const formDataRef = useRef(formData);
-  formDataRef.current = formData;
-
-  // Fetch API key from server
   useEffect(() => {
     fetch("/api/gemini-token")
       .then((r) => r.json())
-      .then((d) => { if (d.key) setApiKey(d.key); })
+      .then((d) => {
+        if (d.key) setApiKey(d.key);
+      })
       .catch(() => {});
-  }, []);
-
-  const handleTranscript = useCallback((role: "user" | "agent", text: string) => {
-    setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
-  }, []);
-
-  const handleError = useCallback((err: string) => {
-    setError(err);
-  }, []);
-
-  const handleLog = useCallback((_msg: string) => {}, []);
-
-  const handleFormSubmit = useCallback(async (answers: { questionTitle: string; answer: string }[]) => {
-    setSubmissionStatus("submitting");
-
-    try {
-      const res = await fetch("/api/submit-form", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ formUrl: formUrlRef.current, responses: answers }),
-      });
-
-      if (!res.ok) {
-        setSubmissionStatus("failed");
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) { setSubmissionStatus("failed"); return; }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let steps = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            steps++;
-            if (event.type === "COMPLETE" || event.status === "COMPLETED") {
-              setSubmissionStatus("success");
-              // Save profile memory + call session
-              if (phoneRef.current) {
-                fetch("/api/user-profile", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    phoneNumber: phoneRef.current,
-                    answers,
-                    formUrl: formUrlRef.current,
-                    formTitle: formDataRef.current?.title || "Unknown Form",
-                    status: "submitted",
-                  }),
-                }).catch(() => {});
-              }
-            }
-            if (event.type === "ERROR" || event.error) {
-              setSubmissionStatus("failed");
-            }
-          } catch { /* skip */ }
-        }
-      }
-    } catch (err: any) {
-      setSubmissionStatus("failed");
-    }
   }, []);
 
   const { status, isSpeaking, connect, disconnect } = useGeminiLive({
     apiKey,
-    onTranscript: handleTranscript,
-    onError: handleError,
-    onLog: handleLog,
-    onFormSubmit: handleFormSubmit,
+    onTranscript: (role, text) => {
+      setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
+    },
+    onError: (err) => {
+      setError(err);
+    },
+    onLog: () => {},
+    onFormSubmit: async (answers) => {
+      setSubmissionStatus("submitting");
+
+      try {
+        const res = await fetch("/api/submit-form", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ formUrl, responses: answers }),
+        });
+
+        if (!res.ok) {
+          setSubmissionStatus("failed");
+          return;
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+          setSubmissionStatus("failed");
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === "COMPLETE" || event.status === "COMPLETED") {
+                setSubmissionStatus("success");
+
+                if (phoneNumber) {
+                  fetch("/api/user-profile", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      phoneNumber,
+                      answers,
+                      formUrl,
+                      formTitle: formData?.title || "Unknown Form",
+                      status: "submitted",
+                    }),
+                  }).catch(() => {});
+                }
+              }
+
+              if (event.type === "ERROR" || event.error) setSubmissionStatus("failed");
+            } catch {}
+          }
+        }
+      } catch {
+        setSubmissionStatus("failed");
+      }
+    },
   });
 
-  useEffect(() => {
-    if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
-  }, [transcript]);
-
-  // Update appState based on connection status
   useEffect(() => {
     if (status === "active") setAppState("conversation");
     if (status === "ended" || status === "error") setAppState("ended");
   }, [status]);
 
-  const handleStart = async () => {
-    if (!formUrl) { setError("Please enter a Google Form URL"); return; }
+  async function handleStart() {
+    if (!formUrl) {
+      setError("Please enter a Google Form URL");
+      return;
+    }
+
     setError("");
     setTranscript([]);
     setSubmissionStatus("idle");
     setAppState("connecting");
 
     try {
-      // Parse form
-      handleLog("Parsing form...");
       const res = await fetch("/api/parse-form", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,62 +131,45 @@ export default function HomePage() {
       if (!res.ok) throw new Error(data.error || "Failed to parse form");
 
       setFormData(data.data);
-      handleLog(`Parsed: "${data.data.title}" — ${data.data.questions.length} questions`);
 
-      // Fetch user profile if phone number provided
       let profileResponses: Record<string, string> = {};
       if (phoneNumber) {
         try {
           const profileRes = await fetch(`/api/user-profile?phone=${encodeURIComponent(phoneNumber)}`);
           const profileData = await profileRes.json();
-          if (profileData.profile?.commonResponses) {
-            profileResponses = profileData.profile.commonResponses;
-            handleLog(`Profile found: ${Object.keys(profileResponses).length} saved fields`);
-          } else {
-            handleLog("No existing profile — starting fresh");
-          }
-        } catch {
-          handleLog("Profile lookup skipped");
-        }
+          if (profileData.profile?.commonResponses) profileResponses = profileData.profile.commonResponses;
+        } catch {}
       }
 
-      // Start voice conversation
       const systemPrompt = createFormAgentPrompt(data.data.title, data.data.questions, profileResponses);
-      const tools = getFormTools();
-      handleLog("Connecting to Gemini Live API...");
-      await connect(systemPrompt, tools);
+      await connect(systemPrompt, getFormTools());
     } catch (err: any) {
       setError(err.message);
       setAppState("input");
     }
-  };
+  }
 
-  const handleEnd = () => {
+  function handleEnd() {
     disconnect();
     setAppState("ended");
-  };
+  }
 
-  const handleReset = () => {
+  function handleReset() {
     setAppState("input");
     setFormData(null);
     setTranscript([]);
     setError("");
     setSubmissionStatus("idle");
-  };
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        {/* Logo + Title */}
         <div className="flex flex-col items-center mb-8">
-          <Image src="/logo-clean.png" alt="Cauliform" width={100} height={100} className="mb-3" />
           <h1 className="text-3xl font-bold text-gray-900">Cauliform</h1>
-          <p className="text-gray-500 text-center mt-1 text-sm">
-            Fill out any Google Form with your voice
-          </p>
+          <p className="text-gray-500 text-center mt-1 text-sm">Fill out any Google Form with your voice</p>
         </div>
 
-        {/* Input State */}
         {appState === "input" && (
           <div className="space-y-4">
             <input
@@ -237,7 +201,6 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Connecting State */}
         {appState === "connecting" && (
           <div className="text-center py-8">
             <div className="animate-spin w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full mx-auto mb-4" />
@@ -245,10 +208,8 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Conversation State */}
         {(appState === "conversation" || appState === "ended") && (
           <div className="space-y-4">
-            {/* Form info */}
             {formData && (
               <div className="px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl">
                 <p className="text-sm font-medium text-amber-900">{formData.title}</p>
@@ -256,13 +217,18 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Status + controls */}
             <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${
-                status === "active" ? (isSpeaking ? "bg-green-500 animate-pulse" : "bg-green-500") :
-                status === "connecting" ? "bg-yellow-500 animate-pulse" :
-                "bg-gray-400"
-              }`} />
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  status === "active"
+                    ? isSpeaking
+                      ? "bg-green-500 animate-pulse"
+                      : "bg-green-500"
+                    : status === "connecting"
+                      ? "bg-yellow-500 animate-pulse"
+                      : "bg-gray-400"
+                }`}
+              />
               <span className="text-sm text-gray-600">
                 {status === "active" && (isSpeaking ? "Agent speaking..." : "Listening...")}
                 {status === "ended" && "Conversation ended"}
@@ -282,7 +248,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Audio visualizer */}
             {status === "active" && (
               <div className="flex items-center justify-center gap-1 h-10">
                 {Array.from({ length: 24 }).map((_, i) => (
@@ -295,38 +260,43 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Submission status */}
             {submissionStatus !== "idle" && (
-              <div className={`px-4 py-3 rounded-xl text-sm font-medium ${
-                submissionStatus === "submitting" ? "bg-yellow-50 text-yellow-800 border border-yellow-200" :
-                submissionStatus === "success" ? "bg-green-50 text-green-800 border border-green-200" :
-                "bg-red-50 text-red-800 border border-red-200"
-              }`}>
+              <div
+                className={`px-4 py-3 rounded-xl text-sm font-medium ${
+                  submissionStatus === "submitting"
+                    ? "bg-yellow-50 text-yellow-800 border border-yellow-200"
+                    : submissionStatus === "success"
+                      ? "bg-green-50 text-green-800 border border-green-200"
+                      : "bg-red-50 text-red-800 border border-red-200"
+                }`}
+              >
                 {submissionStatus === "submitting" && "AI agent is submitting your form..."}
                 {submissionStatus === "success" && "Form submitted successfully!"}
-                {submissionStatus === "failed" && "Submission failed. Check debug logs."}
+                {submissionStatus === "failed" && "Submission failed. Try again."}
               </div>
             )}
 
             {error && <p className="text-red-600 text-sm">{error}</p>}
+
             <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
               <p className="text-xs font-medium text-gray-500 mb-2">Transcript</p>
-              <div ref={transcriptRef} className="h-40 overflow-y-auto space-y-1 text-sm">
+              <div className="h-40 overflow-y-auto space-y-1 text-sm">
                 {transcript.length === 0 ? (
                   <p className="text-gray-400 text-xs">Waiting for conversation...</p>
-                ) : transcript.map((e, i) => (
-                  <div key={i} className={e.role === "agent" ? "text-amber-700" : "text-blue-700"}>
-                    <span className="text-gray-400 text-xs">{e.timestamp.toLocaleTimeString()} </span>
-                    <span className="font-medium">{e.role === "agent" ? "Cauli" : "You"}: </span>
-                    {e.text}
-                  </div>
-                ))}
+                ) : (
+                  transcript.map((e, i) => (
+                    <div key={i} className={e.role === "agent" ? "text-amber-700" : "text-blue-700"}>
+                      <span className="text-gray-400 text-xs">{e.timestamp.toLocaleTimeString()} </span>
+                      <span className="font-medium">{e.role === "agent" ? "Cauli" : "You"}: </span>
+                      {e.text}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Footer */}
         <div className="text-center text-gray-400 text-xs mt-8 space-y-1">
           <p>Powered by Gemini Live API</p>
           <Link href="/about" className="text-amber-600 hover:text-amber-800 underline">
