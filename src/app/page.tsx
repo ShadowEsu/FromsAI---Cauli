@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
 import { createFormAgentPrompt, getFormTools } from "@/lib/prompts";
 import type { FormData } from "@/lib/types";
@@ -299,9 +298,6 @@ export default function HomePage() {
 
         <div className="text-center text-gray-400 text-xs mt-8 space-y-1">
           <p>Powered by Gemini Live API</p>
-          <Link href="/about" className="text-amber-600 hover:text-amber-800 underline">
-            About Cauliform
-          </Link>
         </div>
       </div>
     </div>
