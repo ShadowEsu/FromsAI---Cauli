@@ -1,6 +1,5 @@
-# FORMSAI --- Cauli
+# FORMSAI --- Cauli (NEXT GEN PRODUCT LAB Hackathon project (7-day build).
 
-NEXT GEN PRODUCT LAB Hackathon project (7-day build).
 
 Turn a Google Form into a voice conversation and submit it.
 
