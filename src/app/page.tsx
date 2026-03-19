@@ -6,11 +6,21 @@ import { createFormAgentPrompt, getFormTools } from "@/lib/prompts";
 import type { FormData } from "@/lib/types";
 
 type AppState = "input" | "connecting" | "conversation" | "ended";
-
 type TranscriptEntry = { role: "user" | "agent"; text: string; timestamp: Date };
 
-const inputClass =
-  "w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition text-gray-900";
+const inputClass = "w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none text-gray-900";
+const btnPrimary = "w-full py-3 px-4 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 disabled:bg-gray-300 transition flex items-center justify-center gap-2";
+
+const submissionStyles: Record<string, string> = {
+  submitting: "bg-yellow-50 text-yellow-800 border border-yellow-200",
+  success: "bg-green-50 text-green-800 border border-green-200",
+  failed: "bg-red-50 text-red-800 border border-red-200",
+};
+const submissionMessages: Record<string, string> = {
+  submitting: "Cauli is submitting your form...",
+  success: "Form submitted successfully!",
+  failed: "Submission failed. Try again.",
+};
 
 async function processSubmitStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -19,23 +29,18 @@ async function processSubmitStream(
 ) {
   const decoder = new TextDecoder();
   let buffer = "";
-
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
-
     for (const line of lines) {
       if (!line.startsWith("data: ")) continue;
       try {
-        const event = JSON.parse(line.slice(6));
-        const ok = event.type === "COMPLETE" || event.status === "COMPLETED";
-        const err = event.type === "ERROR" || event.error;
-        if (ok) onComplete();
-        if (err) onError();
+        const e = JSON.parse(line.slice(6));
+        if (e.type === "COMPLETE" || e.status === "COMPLETED") onComplete();
+        if (e.type === "ERROR" || e.error) onError();
       } catch {}
     }
   }
@@ -52,62 +57,53 @@ export default function HomePage() {
   const [apiKey, setApiKey] = useState("");
 
   useEffect(() => {
-    fetch("/api/gemini-token")
-      .then((r) => r.json())
-      .then((d) => d.key && setApiKey(d.key))
-      .catch(() => {});
+    fetch("/api/gemini-token").then((r) => r.json()).then((d) => d.key && setApiKey(d.key)).catch(() => {});
   }, []);
+
+  async function handleFormSubmit(answers: { questionTitle: string; answer: string }[]) {
+    setSubmissionStatus("submitting");
+    try {
+      const res = await fetch("/api/submit-form", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formUrl, responses: answers }),
+      });
+      if (!res.ok || !res.body) {
+        setSubmissionStatus("failed");
+        return;
+      }
+      const reader = res.body.getReader();
+      await processSubmitStream(
+        reader,
+        () => {
+          setSubmissionStatus("success");
+          if (phoneNumber) {
+            fetch("/api/user-profile", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                phoneNumber,
+                answers,
+                formUrl,
+                formTitle: formData?.title || "Unknown Form",
+                status: "submitted",
+              }),
+            }).catch(() => {});
+          }
+        },
+        () => setSubmissionStatus("failed")
+      );
+    } catch {
+      setSubmissionStatus("failed");
+    }
+  }
 
   const { status, isSpeaking, connect, disconnect } = useGeminiLive({
     apiKey,
     onTranscript: (role, text) => setTranscript((p) => [...p, { role, text, timestamp: new Date() }]),
     onError: setError,
     onLog: () => {},
-    onFormSubmit: async (answers) => {
-      setSubmissionStatus("submitting");
-
-      try {
-        const res = await fetch("/api/submit-form", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ formUrl, responses: answers }),
-        });
-
-        if (!res.ok) {
-          setSubmissionStatus("failed");
-          return;
-        }
-
-        const reader = res.body?.getReader();
-        if (!reader) {
-          setSubmissionStatus("failed");
-          return;
-        }
-
-        await processSubmitStream(
-          reader,
-          () => {
-            setSubmissionStatus("success");
-            if (phoneNumber) {
-              fetch("/api/user-profile", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  phoneNumber,
-                  answers,
-                  formUrl,
-                  formTitle: formData?.title || "Unknown Form",
-                  status: "submitted",
-                }),
-              }).catch(() => {});
-            }
-          },
-          () => setSubmissionStatus("failed")
-        );
-      } catch {
-        setSubmissionStatus("failed");
-      }
-    },
+    onFormSubmit: handleFormSubmit,
   });
 
   useEffect(() => {
@@ -140,14 +136,14 @@ export default function HomePage() {
       let profileResponses: Record<string, string> = {};
       if (phoneNumber) {
         try {
-          const profileRes = await fetch(`/api/user-profile?phone=${encodeURIComponent(phoneNumber)}`);
-          const profileData = await profileRes.json();
-          if (profileData.profile?.commonResponses) profileResponses = profileData.profile.commonResponses;
+          const r = await fetch(`/api/user-profile?phone=${encodeURIComponent(phoneNumber)}`);
+          const j = await r.json();
+          profileResponses = j.profile?.commonResponses ?? {};
         } catch {}
       }
 
-      const systemPrompt = createFormAgentPrompt(data.data.title, data.data.questions, profileResponses);
-      await connect(systemPrompt, getFormTools());
+      const prompt = createFormAgentPrompt(data.data.title, data.data.questions, profileResponses);
+      await connect(prompt, getFormTools());
     } catch (err: any) {
       setError(err.message);
       setAppState("input");
@@ -167,6 +163,9 @@ export default function HomePage() {
     setSubmissionStatus("idle");
   }
 
+  const showConversation = appState === "conversation" || appState === "ended";
+  const statusText = status === "active" ? (isSpeaking ? "Cauli speaking..." : "Listening...") : status === "ended" ? "Conversation ended" : status === "error" ? "Error" : "";
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-lg">
@@ -180,11 +179,7 @@ export default function HomePage() {
             <input type="url" value={formUrl} onChange={(e) => setFormUrl(e.target.value)} placeholder="Paste a Google Form URL..." className={inputClass} />
             <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone number (optional — enables memory)" className={inputClass} />
             {error && <p className="text-red-600 text-sm">{error}</p>}
-            <button
-              onClick={handleStart}
-              disabled={!formUrl || !apiKey}
-              className="w-full py-3 px-4 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 disabled:bg-gray-300 transition flex items-center justify-center gap-2"
-            >
+            <button onClick={handleStart} disabled={!formUrl || !apiKey} className={btnPrimary}>
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
                 <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
@@ -201,7 +196,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {(appState === "conversation" || appState === "ended") && (
+        {showConversation && (
           <div className="space-y-4">
             {formData && (
               <div className="px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl">
@@ -212,11 +207,7 @@ export default function HomePage() {
 
             <div className="flex items-center gap-3">
               <div className={`w-3 h-3 rounded-full ${status === "active" ? "bg-green-500" : status === "connecting" ? "bg-yellow-500 animate-pulse" : "bg-gray-400"}`} />
-              <span className="text-sm text-gray-600">
-                {status === "active" && (isSpeaking ? "Cauli speaking..." : "Listening...")}
-                {status === "ended" && "Conversation ended"}
-                {status === "error" && "Error"}
-              </span>
+              <span className="text-sm text-gray-600">{statusText}</span>
               <div className="ml-auto flex gap-2">
                 {appState === "conversation" && (
                   <button onClick={handleEnd} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition">
@@ -244,14 +235,8 @@ export default function HomePage() {
             )}
 
             {submissionStatus !== "idle" && (
-              <div className={`px-4 py-3 rounded-xl text-sm font-medium ${
-                submissionStatus === "submitting" ? "bg-yellow-50 text-yellow-800 border border-yellow-200" :
-                submissionStatus === "success" ? "bg-green-50 text-green-800 border border-green-200" :
-                "bg-red-50 text-red-800 border border-red-200"
-              }`}>
-                {submissionStatus === "submitting" && "Cauli is submitting your form..."}
-                {submissionStatus === "success" && "Form submitted successfully!"}
-                {submissionStatus === "failed" && "Submission failed. Try again."}
+              <div className={`px-4 py-3 rounded-xl text-sm font-medium ${submissionStyles[submissionStatus]}`}>
+                {submissionMessages[submissionStatus]}
               </div>
             )}
 
