@@ -7,11 +7,39 @@ import type { FormData } from "@/lib/types";
 
 type AppState = "input" | "connecting" | "conversation" | "ended";
 
-type TranscriptEntry = {
-  role: "user" | "agent";
-  text: string;
-  timestamp: Date;
-};
+type TranscriptEntry = { role: "user" | "agent"; text: string; timestamp: Date };
+
+const inputClass =
+  "w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition text-gray-900";
+
+async function processSubmitStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onComplete: () => void,
+  onError: () => void
+) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const event = JSON.parse(line.slice(6));
+        const ok = event.type === "COMPLETE" || event.status === "COMPLETED";
+        const err = event.type === "ERROR" || event.error;
+        if (ok) onComplete();
+        if (err) onError();
+      } catch {}
+    }
+  }
+}
 
 export default function HomePage() {
   const [formUrl, setFormUrl] = useState("");
@@ -26,20 +54,14 @@ export default function HomePage() {
   useEffect(() => {
     fetch("/api/gemini-token")
       .then((r) => r.json())
-      .then((d) => {
-        if (d.key) setApiKey(d.key);
-      })
+      .then((d) => d.key && setApiKey(d.key))
       .catch(() => {});
   }, []);
 
   const { status, isSpeaking, connect, disconnect } = useGeminiLive({
     apiKey,
-    onTranscript: (role, text) => {
-      setTranscript((prev) => [...prev, { role, text, timestamp: new Date() }]);
-    },
-    onError: (err) => {
-      setError(err);
-    },
+    onTranscript: (role, text) => setTranscript((p) => [...p, { role, text, timestamp: new Date() }]),
+    onError: setError,
     onLog: () => {},
     onFormSubmit: async (answers) => {
       setSubmissionStatus("submitting");
@@ -62,42 +84,26 @@ export default function HomePage() {
           return;
         }
 
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const event = JSON.parse(line.slice(6));
-              if (event.type === "COMPLETE" || event.status === "COMPLETED") {
-                setSubmissionStatus("success");
-
-                if (phoneNumber) {
-                  fetch("/api/user-profile", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      phoneNumber,
-                      answers,
-                      formUrl,
-                      formTitle: formData?.title || "Unknown Form",
-                      status: "submitted",
-                    }),
-                  }).catch(() => {});
-                }
-              }
-
-              if (event.type === "ERROR" || event.error) setSubmissionStatus("failed");
-            } catch {}
-          }
-        }
+        await processSubmitStream(
+          reader,
+          () => {
+            setSubmissionStatus("success");
+            if (phoneNumber) {
+              fetch("/api/user-profile", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  phoneNumber,
+                  answers,
+                  formUrl,
+                  formTitle: formData?.title || "Unknown Form",
+                  status: "submitted",
+                }),
+              }).catch(() => {});
+            }
+          },
+          () => setSubmissionStatus("failed")
+        );
       } catch {
         setSubmissionStatus("failed");
       }
@@ -171,20 +177,8 @@ export default function HomePage() {
 
         {appState === "input" && (
           <div className="space-y-4">
-            <input
-              type="url"
-              value={formUrl}
-              onChange={(e) => setFormUrl(e.target.value)}
-              placeholder="Paste a Google Form URL..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition text-gray-900"
-            />
-            <input
-              type="tel"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              placeholder="Phone number (optional — enables memory)"
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition text-gray-900"
-            />
+            <input type="url" value={formUrl} onChange={(e) => setFormUrl(e.target.value)} placeholder="Paste a Google Form URL..." className={inputClass} />
+            <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone number (optional — enables memory)" className={inputClass} />
             {error && <p className="text-red-600 text-sm">{error}</p>}
             <button
               onClick={handleStart}
@@ -217,17 +211,7 @@ export default function HomePage() {
             )}
 
             <div className="flex items-center gap-3">
-              <div
-                className={`w-3 h-3 rounded-full ${
-                  status === "active"
-                    ? isSpeaking
-                      ? "bg-green-500 animate-pulse"
-                      : "bg-green-500"
-                    : status === "connecting"
-                      ? "bg-yellow-500 animate-pulse"
-                      : "bg-gray-400"
-                }`}
-              />
+              <div className={`w-3 h-3 rounded-full ${status === "active" ? "bg-green-500" : status === "connecting" ? "bg-yellow-500 animate-pulse" : "bg-gray-400"}`} />
               <span className="text-sm text-gray-600">
                 {status === "active" && (isSpeaking ? "Cauli speaking..." : "Listening...")}
                 {status === "ended" && "Conversation ended"}
@@ -260,15 +244,11 @@ export default function HomePage() {
             )}
 
             {submissionStatus !== "idle" && (
-              <div
-                className={`px-4 py-3 rounded-xl text-sm font-medium ${
-                  submissionStatus === "submitting"
-                    ? "bg-yellow-50 text-yellow-800 border border-yellow-200"
-                    : submissionStatus === "success"
-                      ? "bg-green-50 text-green-800 border border-green-200"
-                      : "bg-red-50 text-red-800 border border-red-200"
-                }`}
-              >
+              <div className={`px-4 py-3 rounded-xl text-sm font-medium ${
+                submissionStatus === "submitting" ? "bg-yellow-50 text-yellow-800 border border-yellow-200" :
+                submissionStatus === "success" ? "bg-green-50 text-green-800 border border-green-200" :
+                "bg-red-50 text-red-800 border border-red-200"
+              }`}>
                 {submissionStatus === "submitting" && "Cauli is submitting your form..."}
                 {submissionStatus === "success" && "Form submitted successfully!"}
                 {submissionStatus === "failed" && "Submission failed. Try again."}
@@ -283,11 +263,11 @@ export default function HomePage() {
                 {transcript.length === 0 ? (
                   <p className="text-gray-400 text-xs">Waiting for conversation...</p>
                 ) : (
-                  transcript.map((e, i) => (
-                    <div key={i} className={e.role === "agent" ? "text-amber-700" : "text-blue-700"}>
-                      <span className="text-gray-400 text-xs">{e.timestamp.toLocaleTimeString()} </span>
-                      <span className="font-medium">{e.role === "agent" ? "Cauli" : "You"}: </span>
-                      {e.text}
+                  transcript.map((entry, i) => (
+                    <div key={i} className={entry.role === "agent" ? "text-amber-700" : "text-blue-700"}>
+                      <span className="text-gray-400 text-xs">{entry.timestamp.toLocaleTimeString()} </span>
+                      <span className="font-medium">{entry.role === "agent" ? "Cauli" : "You"}: </span>
+                      {entry.text}
                     </div>
                   ))
                 )}
