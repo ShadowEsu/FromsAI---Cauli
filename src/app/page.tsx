@@ -22,16 +22,10 @@ export default function HomePage() {
   const [appState, setAppState] = useState<AppState>("input");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
-  const [showTestGuide, setShowTestGuide] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<"idle" | "submitting" | "success" | "failed">("idle");
-  const [agentStreamUrl, setAgentStreamUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [knownResponses, setKnownResponses] = useState<Record<string, string>>({});
 
   const transcriptRef = useRef<HTMLDivElement>(null);
-  const logsRef = useRef<HTMLDivElement>(null);
   const formUrlRef = useRef(formUrl);
   formUrlRef.current = formUrl;
   const phoneRef = useRef(phoneNumber);
@@ -55,17 +49,10 @@ export default function HomePage() {
     setError(err);
   }, []);
 
-  const handleLog = useCallback((msg: string) => {
-    setLogs((prev) => [...prev, msg]);
-  }, []);
+  const handleLog = useCallback((_msg: string) => {}, []);
 
   const handleFormSubmit = useCallback(async (answers: { questionTitle: string; answer: string }[]) => {
     setSubmissionStatus("submitting");
-    setAgentStreamUrl("");
-    const log = (msg: string) => setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
-
-    log(`=== FORM SUBMISSION STARTED ===`);
-    log(`Answers: ${JSON.stringify(answers)}`);
 
     try {
       const res = await fetch("/api/submit-form", {
@@ -75,9 +62,7 @@ export default function HomePage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
         setSubmissionStatus("failed");
-        log(`=== SUBMISSION FAILED: ${data.error || data.details} ===`);
         return;
       }
 
@@ -100,14 +85,8 @@ export default function HomePage() {
           try {
             const event = JSON.parse(line.slice(6));
             steps++;
-            if (event.streamingUrl) {
-              setAgentStreamUrl(event.streamingUrl);
-              setShowDebug(true);
-            }
-            if (event.purpose || event.message) log(`[Agent step ${steps}] ${event.purpose ?? event.message}`);
             if (event.type === "COMPLETE" || event.status === "COMPLETED") {
               setSubmissionStatus("success");
-              log(`=== FORM SUBMITTED (${steps} steps) ===`);
               // Save profile memory + call session
               if (phoneRef.current) {
                 fetch("/api/user-profile", {
@@ -120,19 +99,17 @@ export default function HomePage() {
                     formTitle: formDataRef.current?.title || "Unknown Form",
                     status: "submitted",
                   }),
-                }).then(() => log("Profile memory + call session saved")).catch(() => {});
+                }).catch(() => {});
               }
             }
             if (event.type === "ERROR" || event.error) {
               setSubmissionStatus("failed");
-              log(`=== ERROR: ${event.error ?? event.message} ===`);
             }
           } catch { /* skip */ }
         }
       }
     } catch (err: any) {
       setSubmissionStatus("failed");
-      setLogs((prev) => [...prev, `Submission error: ${err.message}`]);
     }
   }, []);
 
@@ -148,10 +125,6 @@ export default function HomePage() {
     if (transcriptRef.current) transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
   }, [transcript]);
 
-  useEffect(() => {
-    if (logsRef.current) logsRef.current.scrollTop = logsRef.current.scrollHeight;
-  }, [logs]);
-
   // Update appState based on connection status
   useEffect(() => {
     if (status === "active") setAppState("conversation");
@@ -162,9 +135,7 @@ export default function HomePage() {
     if (!formUrl) { setError("Please enter a Google Form URL"); return; }
     setError("");
     setTranscript([]);
-    setLogs([]);
     setSubmissionStatus("idle");
-    setAgentStreamUrl("");
     setAppState("connecting");
 
     try {
@@ -189,7 +160,6 @@ export default function HomePage() {
           const profileData = await profileRes.json();
           if (profileData.profile?.commonResponses) {
             profileResponses = profileData.profile.commonResponses;
-            setKnownResponses(profileResponses);
             handleLog(`Profile found: ${Object.keys(profileResponses).length} saved fields`);
           } else {
             handleLog("No existing profile — starting fresh");
@@ -219,10 +189,8 @@ export default function HomePage() {
     setAppState("input");
     setFormData(null);
     setTranscript([]);
-    setLogs([]);
     setError("");
     setSubmissionStatus("idle");
-    setAgentStreamUrl("");
   };
 
   return (
@@ -266,69 +234,6 @@ export default function HomePage() {
               </svg>
               Start Voice Conversation
             </button>
-
-            {/* How to test it */}
-            <button
-              onClick={() => setShowTestGuide(!showTestGuide)}
-              className={`w-full text-xs px-3 py-2 rounded-xl transition ${showTestGuide ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-            >
-              {showTestGuide ? "Hide" : "How to test it"}
-            </button>
-
-            {showTestGuide && (
-              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm text-sm text-gray-700 space-y-3">
-                <div className="flex gap-3">
-                  <span className="shrink-0 w-6 h-6 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center text-xs font-bold">1</span>
-                  <div>
-                    <p className="font-medium">Copy this test form URL:</p>
-                    <button
-                      onClick={() => {
-                        const url = "https://docs.google.com/forms/d/e/1FAIpQLSeYpuyaG0XcrMvoxGugjTgsqafpGJyH5x5tQDJ7HSXNIyt8tQ/viewform";
-                        navigator.clipboard.writeText(url);
-                        setFormUrl(url);
-                      }}
-                      className="mt-1.5 text-xs bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg transition text-gray-600 font-mono break-all leading-relaxed text-left"
-                    >
-                      https://docs.google.com/forms/d/e/1FAIpQLSeYpuyaG0XcrMvoxGugjTgsqafpGJyH5x5tQDJ7HSXNIyt8tQ/viewform
-                      <span className="ml-2 text-amber-600">(tap to copy)</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <span className="shrink-0 w-6 h-6 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center text-xs font-bold">2</span>
-                  <p className="font-medium">Click &quot;Start Voice Conversation&quot; and allow mic access</p>
-                </div>
-                <div className="flex gap-3">
-                  <span className="shrink-0 w-6 h-6 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center text-xs font-bold">3</span>
-                  <div>
-                    <p className="font-medium">Answer 3 questions by voice:</p>
-                    <ul className="text-xs text-gray-500 mt-1 space-y-0.5 list-disc list-inside">
-                      <li>What&apos;s your name?</li>
-                      <li>How old are you?</li>
-                      <li>What grade? (Freshman/Sophomore/Junior/Senior)</li>
-                    </ul>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <span className="shrink-0 w-6 h-6 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center text-xs font-bold">4</span>
-                  <p className="font-medium">Say &quot;yes&quot; when Cauli asks to confirm &amp; submit</p>
-                </div>
-                <div className="flex gap-3">
-                  <span className="shrink-0 w-6 h-6 bg-green-100 text-green-800 rounded-full flex items-center justify-center text-xs font-bold">5</span>
-                  <div>
-                    <p className="font-medium">Verify your submission:</p>
-                    <a
-                      href="https://docs.google.com/spreadsheets/d/1U6SnVkcx1trpYpRAf6ePO_CagpUHWO5TJoAyWDUqp4s/edit?usp=sharing"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 text-xs bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg transition text-amber-700 font-mono break-all leading-relaxed block"
-                    >
-                      https://docs.google.com/spreadsheets/d/1U6SnVkcx1trpYpRAf6ePO_CagpUHWO5TJoAyWDUqp4s
-                    </a>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -404,69 +309,20 @@ export default function HomePage() {
             )}
 
             {error && <p className="text-red-600 text-sm">{error}</p>}
-
-            {/* Debug toggle */}
-            <button
-              onClick={() => setShowDebug(!showDebug)}
-              className="text-xs text-gray-400 hover:text-gray-600 transition"
-            >
-              {showDebug ? "Hide" : "Show"} debug info
-            </button>
-
-            {showDebug && (
-              <div className="space-y-3">
-                {/* Live browser view */}
-                {agentStreamUrl && (
-                  <div className="rounded-xl overflow-hidden border border-gray-200">
-                    <div className="bg-gray-100 px-3 py-1.5 flex items-center gap-2">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 rounded-full bg-red-400" />
-                        <div className="w-2 h-2 rounded-full bg-yellow-400" />
-                        <div className="w-2 h-2 rounded-full bg-green-400" />
-                      </div>
-                      <span className="text-xs text-gray-500">AI Agent — Live Browser</span>
-                      {submissionStatus === "submitting" && <div className="ml-auto w-2 h-2 rounded-full bg-green-500 animate-pulse" />}
-                    </div>
-                    <iframe
-                      src={agentStreamUrl}
-                      className="w-full bg-white"
-                      style={{ height: "350px" }}
-                      sandbox="allow-same-origin allow-scripts"
-                      title="AI Agent Browser View"
-                    />
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
+              <p className="text-xs font-medium text-gray-500 mb-2">Transcript</p>
+              <div ref={transcriptRef} className="h-40 overflow-y-auto space-y-1 text-sm">
+                {transcript.length === 0 ? (
+                  <p className="text-gray-400 text-xs">Waiting for conversation...</p>
+                ) : transcript.map((e, i) => (
+                  <div key={i} className={e.role === "agent" ? "text-amber-700" : "text-blue-700"}>
+                    <span className="text-gray-400 text-xs">{e.timestamp.toLocaleTimeString()} </span>
+                    <span className="font-medium">{e.role === "agent" ? "Cauli" : "You"}: </span>
+                    {e.text}
                   </div>
-                )}
-
-                {/* Transcript */}
-                <div className="bg-gray-50 rounded-xl border border-gray-200 p-3">
-                  <p className="text-xs font-medium text-gray-500 mb-2">Transcript</p>
-                  <div ref={transcriptRef} className="h-40 overflow-y-auto space-y-1 text-sm">
-                    {transcript.length === 0 ? (
-                      <p className="text-gray-400 text-xs">Waiting for conversation...</p>
-                    ) : transcript.map((e, i) => (
-                      <div key={i} className={e.role === "agent" ? "text-amber-700" : "text-blue-700"}>
-                        <span className="text-gray-400 text-xs">{e.timestamp.toLocaleTimeString()} </span>
-                        <span className="font-medium">{e.role === "agent" ? "Cauli" : "You"}: </span>
-                        {e.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Debug logs */}
-                <div className="bg-gray-900 rounded-xl border border-gray-800 p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-500">Debug Logs</p>
-                    <button onClick={() => navigator.clipboard.writeText(logs.join("\n"))} className="text-xs text-gray-600 hover:text-gray-400">Copy</button>
-                  </div>
-                  <div ref={logsRef} className="h-40 overflow-y-auto space-y-0.5 font-mono text-xs">
-                    {logs.map((l, i) => (
-                      <p key={i} className={l.includes("ERROR") || l.includes("error") ? "text-red-400" : l.includes("===") ? "text-green-400" : "text-gray-500"}>{l}</p>
-                    ))}
-                  </div>
-                </div>
+                ))}
               </div>
-            )}
+            </div>
           </div>
         )}
 
