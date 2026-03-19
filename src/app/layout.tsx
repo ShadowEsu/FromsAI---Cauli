@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cauli — Voice-Powered Google Forms",
-  description: "Fill out any Google Form with your voice, powered by Gemini Live API.",
+  title: "Cauli — Forms AI",
+  description: "Your friendly voice bot for Google Forms. Talk through any form and Cauli submits it for you.",
   icons: {
     icon: "/favicon.ico",
     apple: "/apple-touch-icon.png",

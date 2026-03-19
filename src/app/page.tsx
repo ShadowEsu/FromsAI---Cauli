@@ -165,8 +165,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="flex flex-col items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Cauliform</h1>
-          <p className="text-gray-500 text-center mt-1 text-sm">Fill out any Google Form with your voice</p>
+          <h1 className="text-3xl font-bold text-gray-900">Cauli</h1>
+          <p className="text-gray-500 text-center mt-1 text-sm">Your friendly forms AI — fill out Google Forms with your voice</p>
         </div>
 
         {appState === "input" && (
@@ -203,7 +203,7 @@ export default function HomePage() {
         {appState === "connecting" && (
           <div className="text-center py-8">
             <div className="animate-spin w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-gray-600">Parsing form & connecting...</p>
+            <p className="text-gray-600">Getting Cauli ready...</p>
           </div>
         )}
 
@@ -229,7 +229,7 @@ export default function HomePage() {
                 }`}
               />
               <span className="text-sm text-gray-600">
-                {status === "active" && (isSpeaking ? "Agent speaking..." : "Listening...")}
+                {status === "active" && (isSpeaking ? "Cauli speaking..." : "Listening...")}
                 {status === "ended" && "Conversation ended"}
                 {status === "error" && "Error"}
               </span>
@@ -269,7 +269,7 @@ export default function HomePage() {
                       : "bg-red-50 text-red-800 border border-red-200"
                 }`}
               >
-                {submissionStatus === "submitting" && "AI agent is submitting your form..."}
+                {submissionStatus === "submitting" && "Cauli is submitting your form..."}
                 {submissionStatus === "success" && "Form submitted successfully!"}
                 {submissionStatus === "failed" && "Submission failed. Try again."}
               </div>

@@ -1,26 +1,26 @@
-# FORMSAI --- Cauli 
-# (NEXT GEN PRODUCT LAB Hackathon project (7-day build).
-Demo LIVE APP: https://cauliform-ai-293051374734.us-west1.run.app
+# Cauli — Forms AI
 
+Meet **Cauli**, your friendly voice bot that turns any Google Form into a conversation. Paste a form link, talk through the questions, and Cauli submits it for you. No typing required.
 
-Turn a Google Form into a voice conversation and submit it.
+**Demo:** [https://cauliform-ai-293051374734.us-west1.run.app](https://cauliform-ai-293051374734.us-west1.run.app)
+
+Built for NEXT GEN PRODUCT LAB hackathon (7-day build).
 
 ## Demo video
 
-[![Cauliform Demo](https://img.youtube.com/vi/N7ZOtOqVaf8/maxresdefault.jpg)](https://youtu.be/N7ZOtOqVaf8)
+[![Cauli Demo](https://img.youtube.com/vi/N7ZOtOqVaf8/maxresdefault.jpg)](https://youtu.be/N7ZOtOqVaf8)
 
-## Current build
+## What Cauli does
 
-- Parse a Google Form URL
-- Ask questions with Gemini Live
-- Confirm before submit
-- Submit answers to the form
+- Parses any Google Form URL
+- Asks questions by voice (powered by Gemini Live)
+- Confirms your answers before submitting
+- Submits the form for you
 
-## Not polished yet
+## Status
 
-- UI still rough
-- Error states are basic
-- Some pages are placeholders
+- Core flow works (parse → converse → submit)
+- UI is minimal; more polish planned
 
 ## Quick start
 
@@ -43,7 +43,6 @@ TWILIO_PHONE_NUMBER=
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-## Notes
+## About
 
-- Built for the Gemini Live Agent Challenge.
-- More cleanup and features after hackathon demo.
+Cauli is a forms AI — voice-first, friendly, and hands-free. Built for the Gemini Live Agent Challenge.
