@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useGeminiLive } from "@/hooks/useGeminiLive";
 import { createFormAgentPrompt, getFormTools } from "@/lib/prompts";
@@ -171,7 +172,9 @@ export default function HomePage() {
       <div className="w-full max-w-lg">
         <div className="flex flex-col items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Cauli</h1>
-          <p className="text-gray-500 text-center mt-1 text-sm">Your friendly forms AI — fill out Google Forms with your voice</p>
+          <p className="mt-2 max-w-sm text-center text-base leading-snug text-gray-600">
+            Your friendly forms AI — fill out Google Forms with your voice
+          </p>
         </div>
 
         {appState === "input" && (
@@ -261,9 +264,15 @@ export default function HomePage() {
           </div>
         )}
 
-        <div className="text-center text-gray-400 text-xs mt-8 space-y-1">
-          <p>Powered by Gemini Live API</p>
-        </div>
+        <footer className="mt-10 flex flex-col items-center gap-4 border-t border-amber-200/70 pt-8">
+          <Link
+            href="/about"
+            className="rounded-xl bg-amber-100 px-5 py-3 text-base font-semibold text-amber-950 ring-2 ring-amber-300/80 transition hover:bg-amber-200 hover:ring-amber-400"
+          >
+            About & links
+          </Link>
+          <p className="text-center text-sm text-gray-600">Powered by Gemini Live API</p>
+        </footer>
       </div>
     </div>
   );
