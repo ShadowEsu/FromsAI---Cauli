@@ -1,0 +1,2 @@
+# Jac language toolchain for `jac/` (see README — Python 3.12+ recommended; this repo tests with 3.13).
+jaclang>=0.15.2

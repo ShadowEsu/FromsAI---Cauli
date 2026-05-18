@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { parseGoogleForm, isValidGoogleFormUrl } from "@/lib/form-parser";
+import { parseGoogleFormJac } from "@/lib/jac-form-parser";
+
+const useJacParser =
+  process.env.CAULIFORM_USE_JAC_PARSER === "1" ||
+  process.env.CAULIFORM_USE_JAC_PARSER === "true";
 
 export async function POST(request: Request) {
   try {
@@ -19,7 +24,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const formData = await parseGoogleForm(url);
+    const formData = useJacParser
+      ? await parseGoogleFormJac(url)
+      : await parseGoogleForm(url);
 
     return NextResponse.json({
       success: true,

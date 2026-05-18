@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "jac:check": ".venv-jac/bin/jac check jac/form_parser.jac",
+    "jac:smoke": ".venv-jac/bin/jac run jac/smoke.jac",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -14,6 +16,7 @@
     "@google/genai": "^1.45.0",
     "@google/generative-ai": "^0.24.1",
     "firebase": "^12.10.0",
+    "firebase-admin": "^13.10.0",
     "next": "16.1.6",
     "next-pwa": "^5.6.0",
     "react": "19.2.3",

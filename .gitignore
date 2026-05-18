@@ -1,5 +1,12 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Jac compiler cache
+/.jac/
+jac/.jac/
+
+# Jac / Python venv (see README — create with `python3.13 -m venv .venv-jac`)
+/.venv-jac/
+
 # dependencies
 /node_modules
 /.pnp

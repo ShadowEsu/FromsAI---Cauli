@@ -1,6 +1,12 @@
 import type { FormData, Question, QuestionType } from "./types";
 
 /**
+ * TypeScript implementation of Google Form HTML scraping (Node `fetch`).
+ * Parity reference for the **Jac** sources in `jac/form_parser.jac` (Jac + embedded Python).
+ * Enable server-side Jac parsing with `CAULIFORM_USE_JAC_PARSER=true` — see README.
+ */
+
+/**
  * Extract form ID from Google Forms URL
  */
 export function extractFormId(url: string): string | null {
