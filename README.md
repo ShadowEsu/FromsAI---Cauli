@@ -1,86 +1,105 @@
-# Cauli — Forms AI (**Jac** + Next.js)
+# Cauli — Forms AI
 
-Meet **Cauli**, your friendly voice bot that turns any Google Form into a conversation. Paste a form link, talk through the questions, and Cauli submits it for you.
+Voice-first assistant that turns a Google Form into a spoken conversation: paste a link, answer by voice (Gemini Live), and submit through the browser agent.
 
-This repo highlights the **[Jac programming language](https://docs.jaseci.org)** from the Jaseci stack: form URL validation and the public `parse_google_form` API live in **`jac/form_parser.jac`** (Jac syntax + embedded Python for the HTML/JSON scrape — same algorithm as the TypeScript fallback in `src/lib/form-parser.ts`).
+This repo ships a **Next.js** app and a **[Jac](https://docs.jaseci.org)** module under `jac/`. Form URL checks and `parse_google_form` live in **`jac/form_parser.jac`** (Jac plus a `::py::` block for the HTML / JSON scrape, matching `src/lib/form-parser.ts`).
 
-**Demo:** [https://cauliform-ai-293051374734.us-west1.run.app](https://cauliform-ai-293051374734.us-west1.run.app)
+**Demo:** [cauliform-ai on Cloud Run](https://cauliform-ai-293051374734.us-west1.run.app)
 
-Built for NEXT GEN PRODUCT LAB hackathon (7-day build).
+Built for NEXT GEN PRODUCT LAB (7-day build) and the Gemini Live Agent Challenge.
 
 ## Demo video
 
 [![Cauli Demo](https://img.youtube.com/vi/N7ZOtOqVaf8/maxresdefault.jpg)](https://youtu.be/N7ZOtOqVaf8)
 
-## What Cauli does
+## Features
 
-- Parses any Google Form URL
-- Asks questions by voice (powered by Gemini Live)
-- Confirms your answers before submitting
-- Submits the form for you
+- Parse a public Google Form from its URL
+- Voice Q&A via Gemini Live
+- Confirm answers, then submit (Tinyfish automation API)
 
-## Jac in this project
+## Quick start
 
-| Path | Role |
-|------|------|
-| `jac/form_parser.jac` | **Jac** module: `extract_form_id`, `is_valid_google_form_url`, `map_question_type`, and `parse_google_form` (delegates HTML parsing to a `::py::` block). |
-| `jac/smoke.jac` | Quick Jac runtime checks (`npm run jac:smoke`). |
-| `scripts/jac_parse_stdio.py` | stdin/stdout bridge so Next.js can call the Jac module via Python’s Jac import hook. |
-| `src/lib/jac-form-parser.ts` | Spawns the bridge when Jac parsing is enabled. |
+```bash
+npm install
+```
 
-Install the Jac toolchain into a local venv (Python **3.12+** recommended; tested with **3.13**):
+Create `.env.local` in the project root (see [Environment variables](#environment-variables)), then:
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+## Jac toolchain (optional)
+
+Jac is the Jaseci-stack language used for `jac/form_parser.jac`. Use Python **3.12+** (tested with **3.13**).
 
 ```bash
 python3.13 -m venv .venv-jac
 ./.venv-jac/bin/pip install -r requirements-jac.txt
 ./.venv-jac/bin/jac --version
-npm run jac:check    # static check jac/form_parser.jac
-npm run jac:smoke    # run jac/smoke.jac
 ```
 
-## Quick start (web app)
+After the venv exists:
 
 ```bash
-npm install
-cp .env.example .env.local   # if present
-npm run dev
+npm run jac:check   # static check jac/form_parser.jac
+npm run jac:smoke   # run jac/smoke.jac (no network)
 ```
 
-Open `http://localhost:3000`.
+**Project layout**
 
-### Optional: serve `/api/parse-form` with the Jac parser
+- **`jac/form_parser.jac`** — `extract_form_id`, `is_valid_google_form_url`, `map_question_type`, `parse_google_form` (heavy scraping in embedded Python).
+- **`jac/smoke.jac`** — quick sanity checks for the Jac helpers.
+- **`scripts/jac_parse_stdio.py`** — JSON stdin → JSON stdout bridge for Node.
+- **`src/lib/jac-form-parser.ts`** — spawns the bridge when Jac parsing is enabled.
 
-Default behavior uses fast TypeScript + Node `fetch` (good for serverless).
+### Use Jac for `/api/parse-form`
 
-To run the **same route through Jac + Python** (needs a local Jac venv):
+By default the API uses TypeScript + `fetch` (fits serverless). To run the **Jac-backed** parser locally:
 
 ```bash
 export CAULIFORM_USE_JAC_PARSER=true
-export CAULIFORM_JAC_PYTHON="$(pwd)/.venv-jac/bin/python"
+export CAULIFORM_JAC_PYTHON="$(pwd)/.venv-jac/bin/python"   # must resolve to an absolute path
 npm run dev
 ```
 
-`CAULIFORM_JAC_PYTHON` must be an **absolute** path so the Next.js bundler does not follow `.venv-jac` symlinks at build time.
+Use an absolute path for `CAULIFORM_JAC_PYTHON` so Next/Turbopack does not traverse `.venv-jac` symlinks at build time.
 
 ## Tests
 
 ```bash
-npm test                 # Vitest (TS helpers aligned with jac/form_parser.jac)
-npm run jac:smoke        # Jac smoke tests
+npm test              # Vitest — URL helpers aligned with jac/form_parser.jac
+npm run jac:smoke     # Jac smoke (requires `.venv-jac` + jaclang)
 ```
 
-## Needed env vars
+## Environment variables
+
+Set these in `.env.local` (or your host’s env).
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `GOOGLE_AI_API_KEY` | Yes (voice) | Gemini / token route |
+| `TINYFISH_API_KEY` | Yes (submit) | Form submission automation |
+| `NEXT_PUBLIC_APP_URL` | Recommended | App URL for client config |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Optional | Defaults in code if unset |
+| `CAULIFORM_USE_JAC_PARSER` | Optional | `true` / `1` to parse forms via Jac |
+| `CAULIFORM_JAC_PYTHON` | If Jac parse on | Absolute path to venv `python` |
+
+Example snippet:
 
 ```env
 GOOGLE_AI_API_KEY=
-GOOGLE_CLOUD_PROJECT=
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_PHONE_NUMBER=
+TINYFISH_API_KEY=
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
 ```
 
-Optional:
+Firebase Admin uses **Application Default Credentials** (e.g. `gcloud auth application-default login` locally, or the Cloud Run service account in production).
+
+Optional Jac parsing:
 
 ```env
 CAULIFORM_USE_JAC_PARSER=true
@@ -89,4 +108,4 @@ CAULIFORM_JAC_PYTHON=/absolute/path/to/.venv-jac/bin/python
 
 ## About
 
-Cauli is a forms AI — voice-first, friendly, and hands-free. Built for the Gemini Live Agent Challenge. **Jac** sources live under `jac/`; the UI remains Next.js + React.
+Cauli is forms automation with a conversational layer: **Jac** sources live in `jac/`; the UI and API routes are Next.js and React.
